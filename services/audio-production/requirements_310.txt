@@ -1,0 +1,33 @@
+# Python 3.10 compatible requirements
+# Core AI frameworks
+torch==2.1.0
+torchaudio==2.1.0
+
+# Audio processing
+librosa>=0.10.1
+soundfile>=0.12.1
+audioread>=2.1.9
+
+# AudioCraft and dependencies
+audiocraft==1.3.0
+einops
+flashy
+hydra-core
+hydra-colorlog
+num2words
+omegaconf
+sentencepiece
+spacy
+protobuf
+julius
+
+# Audio generation
+demucs>=4.0.0
+
+# API framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+httpx>=0.26.0
+python-dotenv>=1.0.0
+supabase>=2.3.0

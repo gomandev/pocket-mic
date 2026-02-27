@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-pulse-slow: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-float: float 6s ease-in-out infinite;
+
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.8), inset 0 1px 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-tactile-hover: 0 0 40px -10px rgba(0, 255, 255, 0.4);
+}
+
+:root {
+  /* Slick Obsidian / Midnight Theme */
+  --background: 240 10% 3%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 5%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 5%;
+  --popover-foreground: 0 0% 98%;
+
+  /* Primary: Neon Cyan */
+  --primary: 190 100% 50%;
+  --primary-foreground: 240 10% 3%;
+
+  /* Secondary: Electric Purple */
+  --secondary: 260 100% 65%;
+  --secondary-foreground: 0 0% 98%;
+
+  --muted: 240 10% 12%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 190 100% 50%;
+  --accent-foreground: 240 10% 3%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 10% 10%;
+  --input: 240 10% 10%;
+  --ring: 190 100% 50%;
+  --radius: 1.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/30;
+    background: radial-gradient(circle at top center, hsl(var(--card)) 0%, hsl(var(--background)) 100%);
+    min-height: 100vh;
+  }
+}
+
+.glass-card {
+  @apply bg-white/[0.01] backdrop-blur-3xl border border-white/[0.04] shadow-glass relative;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tactile-button {
+  @apply relative overflow-hidden transition-all duration-300 active:scale-95 hover:shadow-tactile-hover;
+}
+
+.glow-overlay {
+  @apply absolute inset-0 bg-primary/20 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100;
+}
+
+.waveform-vibe {
+  @apply flex items-center justify-center space-x-[3px] h-full;
+}
+
+.bar {
+  @apply w-[3px] rounded-full transition-all duration-300;
+  background: linear-gradient(180deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+}
+
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
