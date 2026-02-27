@@ -11,7 +11,9 @@ Go to [Railway.app](https://railway.app/) and sign up using your GitHub account.
 1. In your Railway dashboard, click **"New Project"**.
 2. Select **"Deploy from GitHub repo"**.
 3. Select your repository: `gomandev/pocket-mic`.
-4. Railway will automatically detect the `railway.json` file we added to the root of your project. This tells Railway to build and run the Python app located in `services/audio-production`.
+4. **CRITICAL STEP**: Before it builds (or if the first build fails), go to the deployment's **Settings** tab.
+5. Scroll down to **Service > Root Directory** and enter: `/services/audio-production`.
+   *(This tells Railway to ignore the `package.json` and Next.js frontend, and only build your Python background worker!)*
 
 ## 3. Set Environment Variables
 Once the project is created, it will likely fail its first build because it's missing the secret keys. 
