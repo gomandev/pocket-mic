@@ -92,7 +92,8 @@ export async function POST(req: NextRequest) {
                 // Stage 4: AI Pipeline (The "Agent Split")
                 // FETCH RICH VOCAL DNA FIRST
                 console.log("Fetching Vocal DNA for Session...");
-                const analysisRes = await fetch("http://localhost:8000/analyze-vocal", {
+                const pythonUrl = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
+                const analysisRes = await fetch(`${pythonUrl}/analyze-vocal`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ audio_url: publicUrl })
