@@ -1,0 +1,7 @@
+# Nixpacks configuration for Railway deployment
+# pedalboard requires libatomic.so.1 (C++ atomic operations library)
+# librosa/soundfile require libsndfile
+
+[phases.setup]
+nixPkgs = ["libatomic_ops", "libsndfile", "ffmpeg"]
+aptPkgs = ["libatomic1", "libsndfile1", "ffmpeg"]

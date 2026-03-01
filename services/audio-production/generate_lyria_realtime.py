@@ -224,7 +224,10 @@ async def generate_reactive_beat(
     if not api_key:
         raise ValueError("GOOGLE_AI_API_KEY not set in environment")
     
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options={'api_version': 'v1alpha'}  # Required for experimental Lyria RealTime
+    )
     collected_audio = bytearray()
     
     if verbose:
@@ -232,7 +235,7 @@ async def generate_reactive_beat(
     
     try:
         async with client.aio.live.music.connect(
-            model="lyria-realtime-exp"
+            model="models/lyria-realtime-exp"  # Must use full model path with v1alpha
         ) as session:
             
             # Set initial musical prompt
@@ -246,7 +249,7 @@ async def generate_reactive_beat(
                 print(f"   ✓ Prompts set: {genre_prompts[0]['text'][:60]}...")
             
             # Set initial generation config
-            config = types.MusicGenerationConfig(
+            config = types.LiveMusicGenerationConfig(
                 bpm=int(np.clip(bpm, 60, 200)),
                 density=float(density_timeline[0]) if density_timeline else 0.5,
                 guidance=3.5,
@@ -278,10 +281,11 @@ async def generate_reactive_beat(
             section_idx = 0
             
             async for message in session.receive():
-                if message.server_content and message.server_content.model_turn:
-                    for part in message.server_content.model_turn.parts:
-                        if part.inline_data and part.inline_data.data:
-                            collected_audio.extend(part.inline_data.data)
+                # Extract audio chunks from Lyria RealTime response
+                if message.server_content and hasattr(message.server_content, 'audio_chunks'):
+                    for chunk in message.server_content.audio_chunks:
+                        if hasattr(chunk, 'data') and chunk.data:
+                            collected_audio.extend(chunk.data)
                 
                 # Calculate current time position
                 current_time_s = len(collected_audio) / bytes_per_second
@@ -298,7 +302,7 @@ async def generate_reactive_beat(
                     
                     try:
                         await session.set_music_generation_config(
-                            types.MusicGenerationConfig(
+                            types.LiveMusicGenerationConfig(
                                 density=new_density
                             )
                         )
