@@ -7,7 +7,7 @@ export const Production = {
         console.log(`Triggering production for job ${jobId}...`);
 
         try {
-            const response = await fetch("http://localhost:8000/process", {
+            const response = await fetch(`${process.env.PYTHON_BACKEND_URL || "http://localhost:8000"}/process`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

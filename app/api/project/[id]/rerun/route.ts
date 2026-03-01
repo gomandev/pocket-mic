@@ -19,7 +19,7 @@ export async function POST(
 
         // Trigger production service (with progress tracking)
         // This sends the job to the Python backend which updates progress in real-time
-        const productionRes = await fetch("http://localhost:8000/process", {
+        const productionRes = await fetch(`${process.env.PYTHON_BACKEND_URL || "http://localhost:8000"}/process`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

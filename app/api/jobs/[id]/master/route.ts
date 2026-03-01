@@ -9,7 +9,7 @@ export async function POST(
 
     try {
         // Proxy to Python Mastering Service
-        const pythonRes = await fetch("http://localhost:8000/master", {
+        const pythonRes = await fetch(`${process.env.PYTHON_BACKEND_URL || "http://localhost:8000"}/master`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
