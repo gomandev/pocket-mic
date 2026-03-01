@@ -13,10 +13,12 @@ import {
     Play,
     MoreVertical,
     FileAudio,
-    Calendar
+    Calendar,
+    LogOut
 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Job, Jobs } from "@/lib/jobs";
+import { logout } from "@/app/login/actions";
 
 export default function ProjectsPage() {
     const router = useRouter();
@@ -48,13 +50,22 @@ export default function ProjectsPage() {
         <div className="min-h-screen bg-background text-white p-6 md:p-12 font-sans selection:bg-primary/30">
             <header className="max-w-7xl mx-auto flex justify-between items-center mb-16">
                 <Logo />
-                <button
-                    onClick={() => router.push("/")}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-full font-bold hover:bg-zinc-200 transition-all text-sm"
-                >
-                    <Plus className="w-4 h-4" />
-                    New Session
-                </button>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => logout()}
+                        className="flex items-center justify-center p-2.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                        title="Sign Out"
+                    >
+                        <LogOut className="w-5 h-5" />
+                    </button>
+                    <button
+                        onClick={() => router.push("/")}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-full font-bold hover:bg-zinc-200 transition-all text-sm"
+                    >
+                        <Plus className="w-4 h-4" />
+                        New Session
+                    </button>
+                </div>
             </header>
 
             <main className="max-w-7xl mx-auto">

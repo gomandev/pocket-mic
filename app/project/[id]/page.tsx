@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Music2, Cpu, CheckCircle2, AlertCircle, XCircle, Play, ArrowLeft, Sparkles } from "lucide-react";
+import { Loader2, Music2, Cpu, CheckCircle2, AlertCircle, XCircle, Play, ArrowLeft, Sparkles, LogOut } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import AudioPlayer from "@/components/audio/AudioPlayer";
+import { logout } from "@/app/login/actions";
 
 export default function ProjectVisualizer() {
     const { id } = useParams();
@@ -109,7 +110,13 @@ export default function ProjectVisualizer() {
                     <ArrowLeft className="w-6 h-6" />
                 </button>
                 <Logo />
-                <div className="w-10" /> {/* Spacer */}
+                <button
+                    onClick={() => logout()}
+                    className="flex items-center justify-center p-2 rounded-full text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                    title="Sign Out"
+                >
+                    <LogOut className="w-5 h-5" />
+                </button>
             </header>
 
             <main className="max-w-4xl mx-auto">
