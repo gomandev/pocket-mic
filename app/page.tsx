@@ -1,6 +1,6 @@
 import { Logo } from "@/components/ui/Logo";
 import AudioRecorder from "@/components/audio/AudioRecorder";
-import { Clock, Menu } from "lucide-react";
+import { Clock, Menu, LogIn } from "lucide-react";
 
 export default function Home() {
   return (
@@ -24,9 +24,9 @@ export default function Home() {
           </a>
           <a href="#" className="hover:text-white transition-colors">How it works</a>
           <a href="#" className="hover:text-white transition-colors">Pricing</a>
-          <button className="px-6 py-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-white backdrop-blur-md">
-            Get Pro
-          </button>
+          <a href="/login" className="px-6 py-2.5 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition-all text-sm flex items-center gap-2">
+            <LogIn className="w-4 h-4" /> Sign In
+          </a>
         </div>
 
         {/* Mobile Nav */}

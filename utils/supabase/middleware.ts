@@ -32,11 +32,13 @@ export async function updateSession(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser()
 
-    // Ensure routing works correctly for protected paths
-    if (
-        !user &&
-        (request.nextUrl.pathname.startsWith('/projects') || request.nextUrl.pathname.startsWith('/project/'))
-    ) {
+    // Define public paths that don't require authentication
+    const isLoginPage = request.nextUrl.pathname === '/login'
+    const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback')
+    const isPublicPath = isLoginPage || isAuthCallback
+
+    // Redirect unauthenticated users to login for all non-public paths
+    if (!user && !isPublicPath) {
         const url = request.nextUrl.clone()
         url.pathname = '/login'
         return NextResponse.redirect(url)
