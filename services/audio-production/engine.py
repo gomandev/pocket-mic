@@ -2,8 +2,13 @@ import os
 import numpy as np
 import soundfile as sf
 import librosa
-from pedalboard import Pedalboard, Compressor, HighpassFilter, Reverb, Gain, Limiter, HighShelfFilter, PeakFilter, Chorus, Distortion
-from pedalboard.io import AudioFile
+try:
+    from pedalboard import Pedalboard, Compressor, HighpassFilter, Reverb, Gain, Limiter, HighShelfFilter, PeakFilter, Chorus, Distortion
+    from pedalboard.io import AudioFile
+    HAS_PEDALBOARD = True
+except ImportError:
+    HAS_PEDALBOARD = False
+    print("⚠️ pedalboard not available in engine, using scipy fallback")
 
 # Configure pydub to use local ffmpeg (for fallback/metadata if needed)
 FFMPEG_PATH = r"c:\Users\A.hydar\Documents\dev\pocketMic\node_modules\@ffmpeg-installer\win32-x64\ffmpeg.exe"

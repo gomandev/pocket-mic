@@ -23,11 +23,16 @@ import soundfile as sf
 import librosa  # For RMS/STFT/onset extraction
 from scipy.interpolate import interp1d  # For envelope upsampling
 from scipy.ndimage import uniform_filter1d  # For gain smoothing
-from pedalboard import (
-    Pedalboard, Compressor, HighpassFilter, 
-    Reverb, Gain, PeakFilter, Chorus, 
-    Distortion, HighShelfFilter
-)
+try:
+    from pedalboard import (
+        Pedalboard, Compressor, HighpassFilter, 
+        Reverb, Gain, PeakFilter, Chorus, 
+        Distortion, HighShelfFilter
+    )
+    HAS_PEDALBOARD = True
+except ImportError:
+    HAS_PEDALBOARD = False
+    print("⚠️ pedalboard not available (missing libatomic?), using scipy fallback")
 from vocal_intel import load_audio_robust
 from typing import Dict
 
@@ -51,23 +56,56 @@ def mix_vocal_and_beat(
     Args:
         vocal_path: Path to vocal audio
         beat_path: Path to beat audio
-        output_path: Where to save the mix
-        vocal_dna: Feature dict from vocal_intel.extract_vocal_dna()
-        nudge_ms: Auto-alignment offset (positive = delay beat)
-        verbose: Print explainable decisions
-        
+        output_path: Where to save
+        vocal_dna: Extracted vocal characteristics
+        nudge_ms: Sample alignment offset
+        verbose: Print decisions
+    
     Returns:
-        Path to mixed output
+        Path to mixed WAV file
     """
+    # === LOAD AUDIO ===
+    v_data, v_sr = load_audio_robust(vocal_path)
+    b_data, b_sr = load_audio_robust(beat_path)
+    
     if verbose:
-        print(f"\n🎚️ REACTIVE MIXING ENGINE")
-        print(f"   Vocal: {vocal_path}")
-        print(f"   Beat: {beat_path}")
+        print(f"\n🎚️ REACTIVE MIXER V3:")
+        print(f"   Vocal: {v_data.shape}, {v_sr}Hz")
+        print(f"   Beat: {b_data.shape}, {b_sr}Hz")
+    
+    # === SCIPY FALLBACK (when pedalboard is unavailable, e.g. Railway) ===
+    if not HAS_PEDALBOARD:
+        if verbose:
+            print(f"   ⚠️ Using scipy fallback (no pedalboard)")
+        
+        # Apply STFT spectral ducking (works without pedalboard)
+        ducked_beat = apply_stft_spectral_duck(v_data, b_data, v_sr, duck_db=-3.0, verbose=verbose)
+        
+        # Apply dynamic sidechain (works without pedalboard)
+        sidechained_beat = apply_dynamic_sidechain(v_data, ducked_beat, v_sr, verbose=verbose)
+        
+        # Simple adaptive mix
+        beat_gain = np.clip(0.6 - (vocal_dna['rms'] * 2.0), 0.25, 0.55)
+        min_len = min(v_data.shape[1], sidechained_beat.shape[1])
+        mixed = (v_data[:, :min_len] * 1.0) + (sidechained_beat[:, :min_len] * float(beat_gain))
+        
+        # Clip prevention
+        max_val = np.max(np.abs(mixed))
+        if max_val > 0.95:
+            mixed = mixed * (0.95 / max_val)
+        
+        sf.write(output_path, mixed.T, v_sr)
+        
+        if verbose:
+            print(f"\n✅ Mix complete (scipy fallback): {output_path}")
+        
+        return output_path
+    
+    if verbose:
         if abs(nudge_ms) > 1.0:
             print(f"   Auto-Nudge: {nudge_ms:+.2f}ms")
     
     # Load audio
-    v_data, v_sr = load_audio_robust(vocal_path)
     b_data, _ = load_audio_robust(beat_path, target_sr=v_sr)
     
     # === AUTO-NUDGE (Artist-First Alignment) ===

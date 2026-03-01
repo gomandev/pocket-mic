@@ -15,10 +15,15 @@ informing professional mastering decisions.
 
 import numpy as np
 import soundfile as sf
-from pedalboard import (
-    Pedalboard, Compressor, HighShelfFilter,
-    Gain, Limiter, Chorus
-)
+try:
+    from pedalboard import (
+        Pedalboard, Compressor, HighShelfFilter,
+        Gain, Limiter, Chorus
+    )
+    HAS_PEDALBOARD = True
+except ImportError:
+    HAS_PEDALBOARD = False
+    print("⚠️ pedalboard not available in decision_master, using scipy fallback")
 from vocal_intel import load_audio_robust, extract_vocal_dna
 from typing import Dict
 
@@ -86,14 +91,21 @@ def master_track(
         print(f"     → Why: Streaming platforms require this loudness.")
     
     # === MASTERING CHAIN ===
-    master_chain = Pedalboard([
-        HighShelfFilter(cutoff_frequency_hz=12000, gain_db=air_gain),
-        Compressor(threshold_db=-22.0, ratio=comp_ratio, attack_ms=30, release_ms=200),
-        Gain(gain_db=2.0 + (punch / 25.0)),
-        Limiter(threshold_db=-0.5)  # True peak safety
-    ])
-    
-    mastered = master_chain(data, sr)
+    if HAS_PEDALBOARD:
+        master_chain = Pedalboard([
+            HighShelfFilter(cutoff_frequency_hz=12000, gain_db=air_gain),
+            Compressor(threshold_db=-22.0, ratio=comp_ratio, attack_ms=30, release_ms=200),
+            Gain(gain_db=2.0 + (punch / 25.0)),
+            Limiter(threshold_db=-0.5)  # True peak safety
+        ])
+        mastered = master_chain(data, sr)
+    else:
+        # Scipy fallback: basic gain + soft clipping
+        from scipy.signal import butter, sosfilt
+        gain_linear = 10 ** ((2.0 + (punch / 25.0)) / 20.0)
+        mastered = data * gain_linear
+        # Soft limiter
+        mastered = np.tanh(mastered * 0.95) / np.tanh(0.95)
     
     # === LOUDNESS NORMALIZATION (LUFS Proxy) ===
     target_rms = 0.15  # Approx -14 LUFS

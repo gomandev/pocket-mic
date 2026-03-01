@@ -3,5 +3,5 @@
 # librosa/soundfile require libsndfile
 
 [phases.setup]
-nixPkgs = ["libatomic_ops", "libsndfile", "ffmpeg"]
-aptPkgs = ["libatomic1", "libsndfile1", "ffmpeg"]
+nixPkgs = ["gcc", "libsndfile", "ffmpeg"]
+aptPkgs = ["libatomic1", "libsndfile1", "ffmpeg", "libgcc-s1"]

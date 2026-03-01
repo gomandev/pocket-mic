@@ -214,47 +214,47 @@ async def process_audio_pipeline(
         supabase.table('jobs').update({'status': 'DESIGNING'}).eq('id', job_id).execute()
         
         # === LYRIA-FIRST BEAT GENERATION ===
-        # Priority: Lyria RealTime (reactive) → Lyria 3 (static) → Stable Audio (legacy)
+        # Priority: Lyria 3 (structured) → Lyria RealTime (reactive) → Stable Audio (legacy)
         beat_path = None
         
-        # PRIMARY: Lyria RealTime - generates beat that breathes with the vocal
+        # PRIMARY: Lyria 3 - structured, composed track with proper song sections
         try:
-            print("\n🎹 Step 3/6: Generating vocal-reactive beat with Lyria RealTime...")
-            beat_path = await generate_reactive_beat(
-                vocal_path=local_audio,
+            print("\n🎹 Step 3/6: Generating structured beat with Lyria 3...")
+            beat_path = generate_beat_lyria(
                 genre=blueprint.get("genre", "Alt-R&B"),
                 bpm=vocal_dna['bpm'],
                 key=blueprint.get("key", "D minor"),
                 mood=blueprint.get("mood", "introspective"),
-                duration_s=30.0,
+                density_hints={
+                    'breath_gap_count': len(vocal_dna.get('breath_gaps', [])),
+                    'avg_presence': 1.0 - np.mean(vocal_dna.get('density_envelope', [0.5]))
+                },
                 vocal_dna=vocal_dna,
-                output_path=os.path.join(os.path.dirname(local_audio), f"beat_{job_id}_lyria_rt.wav"),
+                output_path=os.path.join(os.path.dirname(local_audio), f"beat_{job_id}_lyria3.wav"),
                 verbose=True
             )
-            print("   ✅ Lyria RealTime: Vocal-reactive beat generated")
-        except Exception as lyria_rt_err:
-            print(f"   ⚠️ Lyria RealTime failed: {lyria_rt_err}")
+            print("   ✅ Lyria 3: Structured beat generated")
+        except Exception as lyria3_err:
+            print(f"   ⚠️ Lyria 3 failed: {lyria3_err}")
         
-        # FALLBACK 1: Lyria 3 text-to-music
+        # FALLBACK 1: Lyria RealTime - vocal-reactive streaming (experimental)
         if not beat_path:
             try:
-                print("\n🎹 Step 3/6 (Fallback): Generating beat with Lyria 3...")
-                beat_path = generate_beat_lyria(
+                print("\n🎹 Step 3/6 (Fallback): Generating vocal-reactive beat with Lyria RealTime...")
+                beat_path = await generate_reactive_beat(
+                    vocal_path=local_audio,
                     genre=blueprint.get("genre", "Alt-R&B"),
                     bpm=vocal_dna['bpm'],
                     key=blueprint.get("key", "D minor"),
                     mood=blueprint.get("mood", "introspective"),
-                    density_hints={
-                        'breath_gap_count': len(vocal_dna.get('breath_gaps', [])),
-                        'avg_presence': 1.0 - np.mean(vocal_dna.get('density_envelope', [0.5]))
-                    },
+                    duration_s=30.0,
                     vocal_dna=vocal_dna,
-                    output_path=os.path.join(os.path.dirname(local_audio), f"beat_{job_id}_lyria3.wav"),
+                    output_path=os.path.join(os.path.dirname(local_audio), f"beat_{job_id}_lyria_rt.wav"),
                     verbose=True
                 )
-                print("   ✅ Lyria 3: Beat generated")
-            except Exception as lyria3_err:
-                print(f"   ⚠️ Lyria 3 failed: {lyria3_err}")
+                print("   ✅ Lyria RealTime: Vocal-reactive beat generated")
+            except Exception as lyria_rt_err:
+                print(f"   ⚠️ Lyria RealTime failed: {lyria_rt_err}")
         
         # FALLBACK 2: Stable Audio via Replicate (legacy)
         if not beat_path:
