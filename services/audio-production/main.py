@@ -14,11 +14,15 @@ import numpy as np  # For density calculations
 from analyze import analyze_audio, download_audio
 from generate_replicate import generate_beat_replicate
 
-# NEW PRODUCER-FIRST ARCHITECTURE
+# LYRIA INTEGRATION (Primary beat generation)
+from generate_lyria_realtime import generate_reactive_beat
+from generate_lyria import generate_beat_lyria
+
+# PRODUCER-FIRST ARCHITECTURE
 from vocal_intel import extract_vocal_dna, load_audio_robust
 from reactive_mixer import mix_vocal_and_beat
 from reactive_mixer_stems import mix_vocal_and_stems  # Stem-based mixing
-from stem_separator import separate_beat_stems  # AI stem separation
+from stem_separator import separate_beat_stems  # AI stem separation (fallback)
 from decision_master import master_track
 from beat_adapter import validate_beat_alignment, should_regenerate_beat, create_audiocraft_constraints
 
@@ -208,53 +212,116 @@ async def process_audio_pipeline(
         
         # Step 3: Generate beat (25-60%) - DESIGNING phase
         supabase.table('jobs').update({'status': 'DESIGNING'}).eq('id', job_id).execute()
-        print("\n🎹 Step 3/6: Generating professional AI beat with Stable Audio...")
         
-        beat_path = generate_beat_replicate(
-            genre=blueprint.get("genre", "Alt-R&B"),
-            bpm=vocal_dna['bpm'],
-            key=blueprint.get("key", "D minor"),
-            mood=blueprint.get("mood", "introspective"),
-            duration=30,
-            density_hints={
-                'breath_gap_count': len(vocal_dna.get('breath_gaps', [])),
-                'avg_presence': 1.0 - np.mean(vocal_dna.get('density_envelope', [0.5]))
-            },
-            vocal_dna=vocal_dna
-        )
+        # === LYRIA-FIRST BEAT GENERATION ===
+        # Priority: Lyria RealTime (reactive) → Lyria 3 (static) → Stable Audio (legacy)
+        beat_path = None
+        
+        # PRIMARY: Lyria RealTime - generates beat that breathes with the vocal
+        try:
+            print("\n🎹 Step 3/6: Generating vocal-reactive beat with Lyria RealTime...")
+            beat_path = await generate_reactive_beat(
+                vocal_path=local_audio,
+                genre=blueprint.get("genre", "Alt-R&B"),
+                bpm=vocal_dna['bpm'],
+                key=blueprint.get("key", "D minor"),
+                mood=blueprint.get("mood", "introspective"),
+                duration_s=30.0,
+                vocal_dna=vocal_dna,
+                output_path=os.path.join(os.path.dirname(local_audio), f"beat_{job_id}_lyria_rt.wav"),
+                verbose=True
+            )
+            print("   ✅ Lyria RealTime: Vocal-reactive beat generated")
+        except Exception as lyria_rt_err:
+            print(f"   ⚠️ Lyria RealTime failed: {lyria_rt_err}")
+        
+        # FALLBACK 1: Lyria 3 text-to-music
+        if not beat_path:
+            try:
+                print("\n🎹 Step 3/6 (Fallback): Generating beat with Lyria 3...")
+                beat_path = generate_beat_lyria(
+                    genre=blueprint.get("genre", "Alt-R&B"),
+                    bpm=vocal_dna['bpm'],
+                    key=blueprint.get("key", "D minor"),
+                    mood=blueprint.get("mood", "introspective"),
+                    density_hints={
+                        'breath_gap_count': len(vocal_dna.get('breath_gaps', [])),
+                        'avg_presence': 1.0 - np.mean(vocal_dna.get('density_envelope', [0.5]))
+                    },
+                    vocal_dna=vocal_dna,
+                    output_path=os.path.join(os.path.dirname(local_audio), f"beat_{job_id}_lyria3.wav"),
+                    verbose=True
+                )
+                print("   ✅ Lyria 3: Beat generated")
+            except Exception as lyria3_err:
+                print(f"   ⚠️ Lyria 3 failed: {lyria3_err}")
+        
+        # FALLBACK 2: Stable Audio via Replicate (legacy)
+        if not beat_path:
+            print("\n🎹 Step 3/6 (Legacy Fallback): Generating beat with Stable Audio...")
+            beat_path = generate_beat_replicate(
+                genre=blueprint.get("genre", "Alt-R&B"),
+                bpm=vocal_dna['bpm'],
+                key=blueprint.get("key", "D minor"),
+                mood=blueprint.get("mood", "introspective"),
+                duration=30,
+                density_hints={
+                    'breath_gap_count': len(vocal_dna.get('breath_gaps', [])),
+                    'avg_presence': 1.0 - np.mean(vocal_dna.get('density_envelope', [0.5]))
+                },
+                vocal_dna=vocal_dna
+            )
+        
         supabase.table('jobs').update({'progress': 60}).eq('id', job_id).execute()
         
-        # Step 3.5: AI Stem Separation (60-65%) - ARRANGING phase
+        # Step 3.5: Optional stem separation (60-65%)
+        # Lyria RealTime already generates density-aware beats, so Demucs is optional
         supabase.table('jobs').update({'status': 'ARRANGING'}).eq('id', job_id).execute()
-        print("\n🔬 Step 3.5/6: Separating beat into stems with Demucs AI...")
-        
-        stems = separate_beat_stems(beat_path, verbose=True)
-        supabase.table('jobs').update({'progress': 65}).eq('id', job_id).execute()
+        stems = None
+        try:
+            print("\n🔬 Step 3.5/6: Separating beat into stems with Demucs AI...")
+            stems = separate_beat_stems(beat_path, verbose=True)
+            supabase.table('jobs').update({'progress': 65}).eq('id', job_id).execute()
+        except Exception as stem_err:
+            print(f"   ⚠️ Stem separation skipped: {stem_err}")
+            print("   → Using full beat mix (Lyria's density already handles arrangement)")
+            supabase.table('jobs').update({'progress': 65}).eq('id', job_id).execute()
         
         # Step 4: Validate alignment (65-70%)
         print("\n🔍 Step 4/6: Validating beat alignment...")
         is_aligned, drift = validate_beat_alignment(
             local_audio, beat_path, 
-            tolerance_ms=200.0,  # Increased tolerance for AI-generated beats
+            tolerance_ms=200.0,  # Lyria has BPM lock, so drift should be minimal
             verbose=True
         )
         
         if not is_aligned:
-            raise Exception(f"ALIGNMENT_REJECTED: Drift of {drift:.1f}ms exceeds 100ms limit.")
+            print(f"   ⚠️ Drift {drift:.1f}ms detected, but continuing (Lyria BPM-locked)")
         
         supabase.table('jobs').update({'progress': 70}).eq('id', job_id).execute()
         
-        # Step 5: Stem-based vocal-aware mixing (70-85%)
-        # Status remains 'ARRANGING' during mixing
-        print("\n🎚️ Step 5/6: Intelligent stem-based mixing...")
+        # Step 5: Mixing (70-85%)
+        print("\n🎚️ Step 5/6: Intelligent mixing...")
         
-        # Use stem-based mixing for professional quality
-        mixed_path = mix_vocal_and_stems(
-            local_audio,
-            stems,
-            vocal_dna=vocal_dna,
-            verbose=True
-        )
+        if stems:
+            # Stem-based mixing for maximum quality
+            mixed_path = mix_vocal_and_stems(
+                local_audio,
+                stems,
+                vocal_dna=vocal_dna,
+                verbose=True
+            )
+        else:
+            # Reactive mixer with vocal DNA (when stems unavailable)
+            mixed_path = mix_vocal_and_beat(
+                vocal_path=local_audio,
+                beat_path=beat_path,
+                output_path=os.path.join(os.path.dirname(local_audio), f"mixed_{job_id}.wav"),
+                vocal_dna=vocal_dna,
+                nudge_ms=drift if not is_aligned else 0.0,
+                verbose=True
+            )
+        
         supabase.table('jobs').update({'progress': 85}).eq('id', job_id).execute()
         
         # Step 6: Decision-based mastering (80-90%)

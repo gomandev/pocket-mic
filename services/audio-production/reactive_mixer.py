@@ -1,22 +1,26 @@
 """
-REACTIVE DSP LAYER
-==================
-Deterministic, Vocal-Adaptive Mixing
+REACTIVE DSP LAYER V3
+=====================
+Deterministic, Vocal-Adaptive Mixing with STFT Spectral Ducking
 
 This module implements the "human producer" mixing philosophy:
 - Vocal processing adapts to spectral characteristics
-- Beat processing creates a "spectral pocket" for the vocal
+- STFT spectral ducking creates a MOVING frequency pocket (V3)
+- Dynamic sidechain compression for amplitude breathing (V3)
 - Every decision is explainable and deterministic
 - No static presets, no AI randomness
 
-Think of this as a producer who listens to the vocal and makes
-informed mixing decisions in real-time.
+V3 Upgrades:
+- apply_stft_spectral_duck: Frame-by-frame frequency carving that
+  follows the vocal's formant trajectory
+- apply_dynamic_sidechain: Professional gain ducking with attack/release
+  smoothing driven by vocal RMS envelope
 """
 
 
 import numpy as np
 import soundfile as sf
-import librosa  # For RMS envelope extraction
+import librosa  # For RMS/STFT/onset extraction
 from scipy.interpolate import interp1d  # For envelope upsampling
 from scipy.ndimage import uniform_filter1d  # For gain smoothing
 from pedalboard import (
@@ -120,7 +124,7 @@ def mix_vocal_and_beat(
         print(f"   ✓ Sidechain Compression: Beat ducks on vocal transients")
         print(f"     → Professional 'breathing' - beat fills silence, steps back during singing.")
     
-    # Static EQ for spectral pocket
+    # Static EQ for base spectral pocket
     beat_chain = Pedalboard([
         PeakFilter(cutoff_frequency_hz=presence_freq, gain_db=duck_depth, q=0.5),
         HighShelfFilter(cutoff_frequency_hz=10000, gain_db=-1.5),
@@ -128,11 +132,31 @@ def mix_vocal_and_beat(
     eq_beat = beat_chain(b_data, v_sr)
     
     
-    # === SIDECHAIN COMPRESSION ===
-    # TEMPORARILY FULLY DISABLED FOR DEBUGGING
-    # TODO: Re-enable once array broadcasting issue is resolved
+    # === V3: STFT SPECTRAL DUCKING ===
+    # Frame-by-frame frequency carving: wherever the vocal has energy,
+    # the beat is attenuated at those exact frequencies.
+    if verbose:
+        print(f"\n🔬 STFT SPECTRAL DUCKING:")
+        print(f"   → Frame-by-frame frequency carving (V3 upgrade)")
     
-    processed_beat = eq_beat  # Just use EQ'd beat
+    spectral_ducked_beat = apply_stft_spectral_duck(
+        processed_vocal, eq_beat, v_sr,
+        duck_db=-3.0,  # Lighter touch since Lyria already handles density
+        verbose=verbose
+    )
+    
+    # === V3: DYNAMIC SIDECHAIN COMPRESSION ===
+    # Beat amplitude tracks inverse of vocal energy with attack/release smoothing
+    if verbose:
+        print(f"\n🫀 DYNAMIC SIDECHAIN:")
+        print(f"   → Beat breathes with vocal (V3 upgrade)")
+    
+    processed_beat = apply_dynamic_sidechain(
+        processed_vocal, spectral_ducked_beat, v_sr,
+        attack_ms=5.0, release_ms=80.0,
+        floor_gain=0.35,  # Beat never drops below 35% (keeps presence)
+        verbose=verbose
+    )
     
     # === ADAPTIVE MIX BALANCE ===
     # Scale beat level based on vocal loudness (louder vocal = quieter beat)
@@ -161,3 +185,163 @@ def mix_vocal_and_beat(
         print(f"\n✅ Mix complete: {output_path}")
     
     return output_path
+
+
+# ==========================================================================
+# V3 UPGRADE FUNCTIONS
+# ==========================================================================
+
+def apply_stft_spectral_duck(
+    vocal: np.ndarray,
+    beat: np.ndarray,
+    sr: int,
+    duck_db: float = -3.0,
+    n_fft: int = 2048,
+    hop_length: int = 512,
+    verbose: bool = False
+) -> np.ndarray:
+    """
+    STFT-domain spectral ducking: frame-by-frame frequency carving.
+    
+    Wherever the vocal has energy in the spectrum, the beat is attenuated
+    at those exact frequencies in that exact frame. The result is a "moving
+    hole" that follows the vocal's formant trajectory.
+    
+    Args:
+        vocal: Processed vocal audio [channels, samples]
+        beat: Beat audio to duck [channels, samples]
+        sr: Sample rate
+        duck_db: Attenuation in dB where vocal is loudest (negative)
+        n_fft: FFT window size
+        hop_length: Hop between frames
+        verbose: Print decisions
+        
+    Returns:
+        Spectrally ducked beat audio [channels, samples]
+    """
+    # Work on mono for STFT analysis, apply to both channels
+    min_len = min(vocal.shape[1], beat.shape[1])
+    vocal_mono = vocal[0, :min_len]
+    
+    # Compute vocal STFT
+    V = librosa.stft(vocal_mono, n_fft=n_fft, hop_length=hop_length)
+    V_mag = np.abs(V)
+    
+    # Normalize vocal magnitude to [0, 1]
+    V_max = V_mag.max() + 1e-9
+    V_norm = V_mag / V_max
+    
+    # Convert duck_db to linear scale
+    duck_linear = 10 ** (duck_db / 20.0)
+    
+    # Create dynamic gain mask:
+    # Where vocal is silent → gain = 1.0 (beat untouched)
+    # Where vocal is loud → gain = duck_linear (beat attenuated)
+    gain_mask = 1.0 - V_norm * (1.0 - duck_linear)
+    
+    # Process each channel
+    ducked_channels = []
+    for ch in range(beat.shape[0]):
+        B = librosa.stft(beat[ch, :min_len], n_fft=n_fft, hop_length=hop_length)
+        
+        # Align frames (beat STFT might have different number of frames)
+        min_frames = min(B.shape[1], gain_mask.shape[1])
+        B_ducked = B[:, :min_frames] * gain_mask[:, :min_frames]
+        
+        # Reconstruct
+        ducked_ch = librosa.istft(B_ducked, hop_length=hop_length, length=min_len)
+        ducked_channels.append(ducked_ch)
+    
+    result = np.stack(ducked_channels)
+    
+    # Pad back to original beat length if needed
+    if result.shape[1] < beat.shape[1]:
+        padding = np.zeros((beat.shape[0], beat.shape[1] - result.shape[1]))
+        result = np.concatenate([result, padding], axis=1)
+    
+    if verbose:
+        active_frames = np.sum(V_norm.mean(axis=0) > 0.1)
+        total_frames = V_norm.shape[1]
+        print(f"   ✓ Ducking active in {active_frames}/{total_frames} frames ({100*active_frames/total_frames:.0f}%)")
+        print(f"   ✓ Max attenuation: {duck_db:.1f}dB at vocal peaks")
+    
+    return result
+
+
+def apply_dynamic_sidechain(
+    vocal: np.ndarray,
+    beat: np.ndarray,
+    sr: int,
+    attack_ms: float = 5.0,
+    release_ms: float = 80.0,
+    floor_gain: float = 0.35,
+    hop_length: int = 512,
+    verbose: bool = False
+) -> np.ndarray:
+    """
+    Professional dynamic sidechain: beat ducks when vocal hits, swells in gaps.
+    
+    Uses the vocal's RMS envelope as a gain control signal with proper
+    attack/release smoothing to prevent pumping artifacts.
+    
+    Args:
+        vocal: Processed vocal audio [channels, samples]
+        beat: Beat audio to duck [channels, samples]
+        sr: Sample rate
+        attack_ms: How fast the beat ducks (lower = faster)
+        release_ms: How fast the beat swells back (higher = smoother)
+        floor_gain: Minimum beat gain (0.0 = full duck, 1.0 = no duck)
+        hop_length: Analysis frame size
+        verbose: Print decisions
+        
+    Returns:
+        Sidechained beat audio [channels, samples]
+    """
+    min_len = min(vocal.shape[1], beat.shape[1])
+    
+    # Extract vocal RMS energy envelope
+    vocal_rms = librosa.feature.rms(y=vocal[0, :min_len], hop_length=hop_length)[0]
+    
+    # Invert and normalize: loud vocal → low gain, silence → full gain
+    rms_max = np.max(vocal_rms) + 1e-9
+    inverse_env = 1.0 - (vocal_rms / rms_max)
+    
+    # Apply attack/release smoothing (prevents pumping artifacts)
+    attack_coeff = np.exp(-1.0 / max(1e-9, (attack_ms * sr / (1000.0 * hop_length))))
+    release_coeff = np.exp(-1.0 / max(1e-9, (release_ms * sr / (1000.0 * hop_length))))
+    
+    smoothed = np.zeros_like(inverse_env)
+    smoothed[0] = inverse_env[0]
+    
+    for i in range(1, len(inverse_env)):
+        if inverse_env[i] < smoothed[i - 1]:
+            # Attack (ducking) — fast
+            smoothed[i] = attack_coeff * smoothed[i - 1] + (1 - attack_coeff) * inverse_env[i]
+        else:
+            # Release (swelling back) — slow
+            smoothed[i] = release_coeff * smoothed[i - 1] + (1 - release_coeff) * inverse_env[i]
+    
+    # Scale gain curve: floor_gain at maximum duck, 1.0 at full swell
+    gain_curve = floor_gain + smoothed * (1.0 - floor_gain)
+    
+    # Upsample gain curve to sample-level
+    frame_times = np.arange(len(gain_curve)) * hop_length
+    sample_times = np.arange(min_len)
+    gain_samples = np.interp(sample_times, frame_times, gain_curve)
+    
+    # Apply to all channels of beat
+    result = beat[:, :min_len] * gain_samples[np.newaxis, :]
+    
+    # Pad back to original length if needed
+    if result.shape[1] < beat.shape[1]:
+        padding = beat[:, min_len:]
+        result = np.concatenate([result, padding], axis=1)
+    
+    if verbose:
+        avg_gain = np.mean(gain_samples)
+        min_gain = np.min(gain_samples)
+        print(f"   ✓ Avg beat gain: {avg_gain:.2f} ({int(avg_gain*100)}%)")
+        print(f"   ✓ Max duck: {min_gain:.2f} ({int(min_gain*100)}%)")
+        print(f"   ✓ Attack: {attack_ms:.0f}ms / Release: {release_ms:.0f}ms")
+    
+    return result
